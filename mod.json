@@ -1,0 +1,13 @@
+{
+  "folium": 1,
+  "id": "we-wallpaper",
+  "name": "Wallpaper Engine 原生壁纸",
+  "version": "1.0.0",
+  "author": "NaLuna",
+  "description": "驱动真实 Wallpaper Engine 引擎（-playInWindow），把壁纸渲染成窗口压在 Folia 下方跟随；scene 场景壁纸同样可用。静音走 WE 官方 -control mute + 系统音频会话静音，不碰壁纸文件、不改 WE 内部音频，音频响应（可视化）照常工作。静音壁纸这个选项一直没有做好，开启静音后音频响应不会工作，这边建议去WE里设置关闭声音输出，一般人的壁纸应该不会开音乐吧。。。",
+  "main": "index.cjs",
+  "client": "client.mjs",
+  "preview": "preview.png",
+  "permissions": ["filesystem.data"]
+}
+

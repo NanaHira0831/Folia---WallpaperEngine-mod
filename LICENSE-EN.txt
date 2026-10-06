@@ -1,0 +1,73 @@
+==========================================================================
+ Wallpaper Engine Native Wallpaper - Folia Mod
+ LICENSE (English)
+==========================================================================
+
+Copyright (C) 2026 NaLuna. All rights reserved.
+
+This mod is provided for personal, non-commercial use only.
+
+
+PROHIBITED (without the author's prior written permission)
+--------------------------------------------------------------------------
+  1. Redistribution or re-upload, including but not limited to: mod packs,
+     file-sharing / mirror links, forum or social-media reposts, public
+     accounts, bundled downloads attached to videos, chat-group file
+     forwarding.
+
+  2. Any form of charging, including but not limited to: paid downloads,
+     donation-gated access, members-only access, commercial use, or using
+     this mod as part of paid or promotional content.
+
+  3. Publishing a modified, renamed or de-attributed version, including
+     but not limited to: removing the author name or this license,
+     replacing the bundled we-follow.exe, or repacking and releasing it
+     under another name.
+
+
+PERMITTED
+--------------------------------------------------------------------------
+  * Free personal use and free configuration on your own machine.
+
+  * Sharing a LINK to the original release page, provided the complete
+    attribution and this license (including this file) are kept intact.
+    Please share the link - do not redistribute the files.
+
+
+DISCLAIMER
+--------------------------------------------------------------------------
+  * Provided "AS IS", without warranty of any kind. Use at your own risk.
+
+
+THIRD PARTIES
+--------------------------------------------------------------------------
+  * Reference implementation: XxHuberrr/Mineradio (GPL-3.0-only).
+    This mod is an independent rewrite; no source code was copied from it.
+
+  * Wallpaper Engine is proprietary software by Skutta Software. This mod
+    drives it only through its public command line (-control openWallpaper
+    / closeWallpaper / mute / unmute). It does not include, modify or
+    redistribute any Wallpaper Engine files.
+
+  * Folia / Folium belong to their respective authors; this mod uses their
+    public mod APIs.
+
+
+LICENSE IDENTIFIER
+--------------------------------------------------------------------------
+  "All Rights Reserved" (proprietary).
+  NOT an OSI-approved open-source license.
+  SPDX-style reference: LicenseRef-Proprietary
+
+
+CONTACT
+--------------------------------------------------------------------------
+  For licensing, redistribution or commercial inquiries, contact the
+  author.
+
+
+NOTE
+--------------------------------------------------------------------------
+  The Chinese text in "使用条款.txt" is the authoritative version.
+  In case of any conflict, the Chinese version prevails.
+==========================================================================
