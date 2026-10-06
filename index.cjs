@@ -11,9 +11,8 @@
 //
 // 做法：
 //   1. 扫 Steam 库找到 Wallpaper Engine 与创意工坊壁纸库，读出当前壁纸；
-//   2. 静音只做"运行时开关"：WE 官方 `-control mute` + 系统音频会话静音（WASAPI）。
-//      **不碰任何壁纸文件，也不改 WE 内部音频**，所以壁纸的音频响应（可视化）照常工作。
-//      为什么必须两条叠加、以及一路上试错过的方案和实测数据，见 README.md；
+//   2. 本模组【不做静音】：壁纸有声时请到 Wallpaper Engine 设置 → 一般 → 音频输出 里关闭；
+//      原因与全部实测记录（为什么任何"压音量"的做法都会掐断音频响应）见 README.md；
 //   3. 给 WE 下 `-control openWallpaper -file <pkg> -playInWindow <标题> -borderless`，
 //      WE 会把壁纸渲染进一个普通无边框窗口（WPEOverlappedWallpaper）；
 //   4. 起一个预编译的 C# 跟随器（we-follow.exe），用 SetWindowPos 把那个窗口压在
@@ -82,14 +81,6 @@ function run(exe, args, timeoutMs) {
   });
 }
 
-// 需要读取子进程 stdout 时用这个（we-follow.exe --mute-we 会把会话数打到 stdout）
-function runCapture(exe, args, timeoutMs) {
-  return new Promise(function (resolve) {
-    execFile(exe, args, { windowsHide: true, timeout: timeoutMs || 8000, maxBuffer: 64 * 1024 }, function (error, stdout) {
-      resolve({ ok: !error, stdout: String(stdout == null ? '' : stdout).trim(), error: error || null });
-    });
-  });
-}
 
 /* ------------------------------------------------------- Steam / WE 发现 */
 
@@ -341,7 +332,13 @@ function discover() {
   };
 }
 
-/* --------------------------------------------- 壁纸音频静音（WE 官方 mute） */
+/* ------------------------------------------------------ 关于壁纸声音 */
+
+// 本模组不碰壁纸音频，只给一句提示：请在 Wallpaper Engine 设置 → 一般 → 音频输出 里关闭。
+// 原因是实测下来所有"把音量压成 0"的做法（改 scene.pkg、覆盖壁纸音量属性、WE 内置 volume）
+// 都会让 WE 干脆不渲染这个声音，音频流一断，壁纸的音频响应（频谱条/音频颜色等）就死了；
+// 而 WE 官方 `-control mute` 又管不到 -playInWindow 弹出窗口（实测峰值 0.987 → 0.987 纹丝不动）。
+// 完整数据见 README.md「关于壁纸声音」。
 
 // 为什么这里没有「改 scene.pkg」或「覆盖音量属性」那套东西了 —— 都是实测踩出来的：
 //   1. 改 scene.pkg 里的 sound 对象（volume=0 / startsilent）→ WE 干脆不渲染这个声音，
@@ -439,35 +436,6 @@ function spawnFollower(title, hwnd) {
     }),
   });
 }
-/* ------------------------------------------- 壁纸音频静音（运行时开关） */
-
-// A) WE 官方命令（官方文档：-control mute / -control unmute，"Mutes all wallpapers"）。
-//    不碰任何壁纸文件，也不改 WE 内部音频，属于最"原生"的一层。
-function setWeMute(weExe, on) {
-  if (!weExe || !isFile(weExe)) return Promise.resolve({ ok: false, reason: 'we-not-found' });
-  return run(weExe, ['-control', on ? 'mute' : 'unmute'], 8000).then(function () {
-    return { ok: true };
-  }).catch(function (err) {
-    return { ok: false, reason: String((err && err.message) || err) };
-  });
-}
-
-// B) 系统音频会话静音（WASAPI）。
-//    WE 官方 mute 管不到 -playInWindow 弹出窗口（实测），所以必须靠这一层把弹出窗口静下来。
-//    它在系统混音层动手，WE 内部拿到的音频数据与不静音时完全一致，
-//    所以壁纸的音频响应（可视化）不会受影响 —— 这正是"改音量/改包"做不到的。
-//    代价：桌面壁纸与弹出窗口同进程同会话，会一起静音（停用背景时自动恢复）。
-function setWeProcessMute(on) {
-  const exe = path.join(__dirname, "we-follow.exe");
-  if (!isFile(exe)) return Promise.resolve({ ok: false, reason: "缺少 we-follow.exe" });
-  return runCapture(exe, ["--mute-we", on ? "1" : "0"], 8000).then(function (result) {
-    if (!result.ok) {
-      return { ok: false, reason: result.error ? String(result.error.message || result.error) : "执行失败" };
-    }
-    const sessions = Number(result.stdout);
-    return { ok: true, sessions: Number.isFinite(sessions) ? sessions : 0 };
-  });
-}
 
 /* --------------------------------------------------------- WE 进程管理 */
 
@@ -504,9 +472,6 @@ module.exports = function activate(api) {
     title: WE_TITLE,
     file: null,
     launchFile: null,
-    muted: false,
-    muteLayer: 'none',
-    processMuted: false,
     follower: null,
     hostHwnd: null,
     hwndMonitor: null,
@@ -585,21 +550,6 @@ module.exports = function activate(api) {
     session.file = null;
     session.launchFile = null;
 
-    // 关掉背景时把两层静音都撤掉，否则桌面壁纸会一直没声音。
-    if (session.processMuted) {
-      session.processMuted = false;
-      if (!quitWe) {
-        if (info && info.ok && info.weExe) {
-          const weBack = await setWeMute(info.weExe, false);
-          if (!weBack.ok) api.log.warn('恢复 WE 官方静音状态失败：' + weBack.reason);
-        }
-        const restored = await setWeProcessMute(false);
-        if (restored.ok) api.log.info('已恢复 Wallpaper Engine 的音频会话');
-        else api.log.warn('恢复 Wallpaper Engine 音频会话失败：' + restored.reason);
-      }
-    }
-    session.muteLayer = 'none';
-
     // 3) 可选：连 Wallpaper Engine 一起退掉（注意会同时结束桌面壁纸）
     if (quitWe && info && info.ok) {
       try {
@@ -650,24 +600,6 @@ module.exports = function activate(api) {
     return true;
   }
 
-  // 静音是"运行时开关"，WE 刚开窗时可能还没接管好，退避重试几次。
-  async function applyMuteWithRetries(weExe, title) {
-    const delays = [0, 500, 1500, 3000];
-    for (const delay of delays) {
-      if (delay) await sleep(delay);
-      if (!session.active || session.title !== title) return; // 已经换窗口了
-      const we = await setWeMute(weExe, true);
-      const wasapi = await setWeProcessMute(true);
-      session.processMuted = wasapi.ok;
-      if (we.ok || wasapi.ok) {
-        api.log.info('壁纸静音：WE 官方 mute ' + (we.ok ? '已下发' : '失败')
-          + '；系统会话静音 ' + (wasapi.ok ? '已下发（' + wasapi.sessions + ' 个会话）' : '失败'));
-        return;
-      }
-    }
-    api.log.warn('壁纸静音：两条路都失败了（壁纸可能仍有声音）');
-  }
-
   async function openSession(payload) {
     const info = describe();
     if (!info || !info.ok) {
@@ -684,11 +616,6 @@ module.exports = function activate(api) {
     // 每次开都用一个全新标题，避免和还没销毁的旧窗口撞名、导致跟随器定位错窗口。
     session.title = WE_TITLE + '-' + String(Date.now() % 1000000);
 
-    // 静音：只做"运行时开关"，一个字都不碰壁纸文件，也不改 WE 内部音频。
-    //   A. WE 官方 -control mute（覆盖显示器上的壁纸）
-    //   B. 系统音频会话静音（覆盖 -playInWindow 弹出窗口；WE 官方 mute 管不到它）
-    // 两者都不动 WE 的音频管线，所以壁纸的音频响应（可视化）照常工作。
-    const muteWanted = !(payload && payload.mute === false); // 默认静音
     const launch = resolved.file;
 
     // 1) 先把 WE 拉起来 —— 这一步不依赖 Folia 窗口，冷启动时窗口可能还没就绪。
@@ -729,8 +656,6 @@ module.exports = function activate(api) {
     session.active = true;
     session.file = resolved.file;
     session.launchFile = launch;
-    session.muted = muteWanted;
-    session.muteLayer = muteWanted ? 'we-mute' : 'none';
 
     try {
       session.follower = spawnFollower(session.title, win.hwnd);
@@ -739,10 +664,6 @@ module.exports = function activate(api) {
     }
     session.hostHwnd = win.hwnd;
 
-    // 静音：WE 官方 mute + 系统会话静音，都不碰壁纸文件、也不动 WE 内部音频。
-    if (muteWanted) {
-      await applyMuteWithRetries(info.weExe, session.title);
-    }
 
     // 「透明化」会重建 Folia 主窗口（hwnd 会变），这里轮询检测并在变化后重新武装跟随器。
     if (session.hwndMonitor) clearInterval(session.hwndMonitor);
@@ -778,8 +699,6 @@ module.exports = function activate(api) {
       ok: true,
       title: session.title,
       hwnd: win.hwnd,
-      muted: muteWanted,
-      muteLayer: muteWanted ? 'we-mute' : 'none',
     };
   }
 
@@ -819,8 +738,6 @@ module.exports = function activate(api) {
       active: session.active,
       title: session.title,
       file: session.file,
-      muted: session.muted,
-      muteLayer: session.muteLayer,
     };
   });
 
@@ -837,6 +754,4 @@ module.exports = function activate(api) {
 // 测试钩子：本机离线回归用，不影响运行。
 module.exports._test = {
   discover: discover,
-  setWeMute: setWeMute,
-  setWeProcessMute: setWeProcessMute,
 };

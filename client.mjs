@@ -56,24 +56,13 @@ const T = {
   },
   unsupportedHidden: { 'zh-CN': '已隐藏 {n} 个不支持的类型', en: '{n} unsupported hidden' },
   quitWeLabel: { 'zh-CN': '停用背景时退出 Wallpaper Engine', en: 'Quit Wallpaper Engine when disabled' },
-  muteOn: { 'zh-CN': '静音壁纸音频', en: 'Mute wallpaper audio' },
-  mutedNow: {
-    'zh-CN': '已静音（WE 官方 mute + 系统会话静音，可视化不受影响）',
-    en: 'Muted (WE native mute + system session; visuals unaffected)',
+  audioHint: {
+    'zh-CN': '壁纸的声音请在 Wallpaper Engine 里关闭：设置 → 一般 → 音频输出。关掉之后壁纸就没声音，音频响应照常工作。',
+    en: 'To silence wallpaper audio, turn it off in Wallpaper Engine: Settings - General - Audio output.',
   },
 };
 
 const SETTINGS = [
-  {
-    key: 'muteWallpaper',
-    type: 'boolean',
-    defaultValue: true,
-    label: { 'zh-CN': '静音壁纸音频', en: 'Mute wallpaper audio' },
-    description: {
-      'zh-CN': '默认开。用 WE 官方的 -control mute，再叠加系统音频会话静音（WE 的 mute 管不到弹出窗口）。两者都不碰壁纸文件、也不改 WE 内部音频，所以壁纸的音频响应（频谱条/音频颜色等可视化）照常工作。注意：桌面壁纸和弹出窗口同进程同会话，会被一起静音，停用背景时自动恢复。',
-      en: 'On by default. Uses WE\'s own -control mute plus a system audio-session mute (WE\'s mute does not reach pop-out windows). Neither touches wallpaper files nor WE\'s internal audio, so audio-reactive visuals keep working. The desktop wallpaper shares the same process/session and is muted too; restored when the background is disabled.',
-    },
-  },
   {
     key: 'quitWeOnDisable',
     type: 'boolean',
@@ -181,13 +170,9 @@ function mountBackground(store, container, ctx, isMain) {
   }
 
   let disposed = false;
-  let appliedMute = null;
+  let openedOnce = false;
   let transparencyWatch = null;
 
-  function currentMute() {
-    // 默认静音：只有显式 false 才不静音
-    return (ctx.getSettings() || {}).muteWallpaper !== false;
-  }
 
 
   function clearTransparencyWatch() {
@@ -213,12 +198,8 @@ function mountBackground(store, container, ctx, isMain) {
   }
 
   async function sync() {
-    const mute = currentMute();
-    const result = appliedMute === null ? await store.open({ mute: mute }) : null;
-    if (appliedMute !== null && appliedMute !== mute) {
-      await store.reopen({ mute: mute });
-    }
-    appliedMute = mute;
+    const result = openedOnce ? null : await store.open();
+    openedOnce = true;
     if (disposed) return;
     if (result && result.ok) {
       hint.textContent = '';
@@ -321,15 +302,11 @@ function mountPanel(folium, store, container, ctx) {
     'padding:4px',
   ].join(';');
 
-  // 静音开关（绑定到 schema）
-  const muteRow = document.createElement('label');
-  muteRow.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;';
-  const muteCheck = document.createElement('input');
-  muteCheck.type = 'checkbox';
-  muteCheck.style.cssText = `width:15px;height:15px;accent-color:${ACCENT};`;
-  const muteText = document.createElement('span');
-  muteText.textContent = L(T.muteOn, locale);
-  muteRow.append(muteCheck, muteText);
+
+  // 壁纸声音：本模组不做静音，给一句提示（压音量会让音频响应失效）
+  const audioRow = document.createElement('div');
+  audioRow.style.cssText = 'font-size:12px;line-height:1.6;opacity:.55;';
+  audioRow.textContent = L(T.audioHint, locale);
 
   const hint = document.createElement('div');
   hint.style.cssText = 'font-size:12px;line-height:1.6;opacity:.55;';
@@ -355,7 +332,7 @@ function mountPanel(folium, store, container, ctx) {
   quitRow.append(quitCheck, quitText);
 
   actions.append(toggleBtn, refreshBtn, statusRow);
-  root.append(infoRow, actions, listTitle, listEl, muteRow, transpRow, quitRow, hint);
+  root.append(infoRow, actions, listTitle, listEl, transpRow, quitRow, hint, audioRow);
 
   let info = null;
   let running = false;
@@ -385,14 +362,9 @@ function mountPanel(folium, store, container, ctx) {
     toggleBtn.disabled = busy;
     const base = busy ? L(T.working, locale) : running ? L(T.running, locale) : L(T.stopped, locale);
     const err = !running && !busy && store.state.lastError ? '  ·  ' + String(store.state.lastError) : '';
-    statusRow.textContent = base + (running ? muteSuffix() : '') + err;
+    statusRow.textContent = base + err;
   }
 
-  // 让用户看得见静音状态（桌面壁纸会一起静音，得说清楚）
-  function muteSuffix() {
-    if (store.state.muteLayer === 'we-mute') return '  ·  ' + L(T.mutedNow, locale);
-    return '';
-  }
 
   function renderList() {
     const all = (info && info.items) || [];
@@ -438,29 +410,12 @@ function mountPanel(folium, store, container, ctx) {
         void (async function () {
           await store.select({ folder: item.folder, title: item.title, type: item.type });
           renderList();
-          if (running) await store.reopen({ mute: muteCheck.checked !== false });
+          if (running) await store.reopen({});
         })();
       });
       listEl.append(row);
     }
   }
-
-  function renderMute() {
-    try {
-      // 默认开：只有显式 false 才是不静音
-      muteCheck.checked = (ctx.params.get() || {}).muteWallpaper !== false;
-    } catch (err) {
-      muteCheck.checked = true;
-    }
-  }
-
-  muteCheck.addEventListener('change', function () {
-    try {
-      ctx.params.set({ muteWallpaper: muteCheck.checked });
-    } catch (err) {
-      folium.log.warn('WE 原生：保存静音设置失败', String(err));
-    }
-  });
 
 
   function renderQuit() {
@@ -521,7 +476,6 @@ function mountPanel(folium, store, container, ctx) {
     renderInfo();
     renderStatus();
     renderList();
-    renderMute();
     renderQuit();
   }
 
@@ -530,7 +484,7 @@ function mountPanel(folium, store, container, ctx) {
       busy = true;
       renderStatus();
       if (running) await store.close({ quitWe: quitCheck.checked === true });
-      else await store.open({ mute: muteCheck.checked !== false });
+      else await store.open({});
       busy = false;
       running = store.state.running;
       renderStatus();
@@ -569,7 +523,7 @@ export default function activate(folium) {
   const isMainContext = folium.env.context === 'main';
 
   const listeners = new Set();
-  const state = { selection: null, running: false, lastError: null, muteLayer: 'none' };
+  const state = { selection: null, running: false, lastError: null };
 
   function emit() {
     for (const fn of Array.from(listeners)) {
@@ -625,10 +579,8 @@ export default function activate(folium) {
     try {
       const status = await folium.rpc.call('status');
       state.running = !!(status && status.active);
-      state.muteLayer = (status && status.muteLayer) || 'none';
     } catch (err) {
       state.running = false;
-      state.muteLayer = 'none';
     }
     emit();
   }
@@ -654,7 +606,6 @@ export default function activate(folium) {
         folium.log.warn('WE 原生：没有可打开的壁纸（壁纸库里没选，也没读到 WE 当前壁纸）');
         return { ok: false, reason: 'no-wallpaper' };
       }
-      payload.mute = !(options && options.mute === false);
 
       const result = await folium.rpc.call('open', payload);
       await refreshStatus();
