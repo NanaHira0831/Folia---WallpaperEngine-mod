@@ -7,7 +7,7 @@
   "description": "驱动真实 Wallpaper Engine 引擎（-playInWindow），把壁纸渲染成窗口压在 Folia 下方跟随；scene 场景壁纸同样可用。注意：本模组不做静音 —— 壁纸的声音请在 Wallpaper Engine 里关闭（设置 → 一般 → 音频输出），因为任何压音量的做法都会让壁纸的音频响应（可视化）停止工作。",
   "main": "index.cjs",
   "client": "client.mjs",
-  "preview": "preview.png",
+  "preview": "preview.jpg",
   "permissions": [
     "filesystem.data"
   ]
