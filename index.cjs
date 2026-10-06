@@ -562,12 +562,14 @@ module.exports = function activate(api) {
   }
 
   // 没开 WE 就先自动拉起来，省得每次手动启动；起来后等控制通道就绪。
+  // 关键：必须带 `-silent`。WE 不带参数启动会**把主界面弹出来**
+  // （自己电脑上 WE 一直开着所以遇不到，换台电脑第一次启用就会满屏弹 WE）。
   async function ensureWeRunning(weExe) {
     if (await isWeRunning()) return true;
 
-    api.log.info('Wallpaper Engine 未运行，自动启动：' + weExe);
+    api.log.info('Wallpaper Engine 未运行，静默启动（-silent）：' + weExe);
     try {
-      const child = spawn(weExe, [], { detached: true, stdio: 'ignore', windowsHide: true });
+      const child = spawn(weExe, ['-silent'], { detached: true, stdio: 'ignore', windowsHide: true });
       child.unref();
     } catch (err) {
       api.log.error('启动 Wallpaper Engine 失败', String((err && err.message) || err));
